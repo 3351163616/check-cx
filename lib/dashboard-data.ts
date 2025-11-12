@@ -1,5 +1,5 @@
 import type { CheckResult } from "@/lib/checks";
-import { loadProviderConfigs, runProviderChecks } from "@/lib/checks";
+import { loadProviderConfigsFromDB, runProviderChecks } from "@/lib/checks";
 import { appendHistory, loadHistory } from "@/lib/history-store";
 import {
   getPollingIntervalLabel,
@@ -61,7 +61,7 @@ export interface DashboardData {
 const formatTime = (iso: string) => timeFormatter.format(new Date(iso));
 
 export async function loadDashboardData(options?: { refreshMode?: RefreshMode }) {
-  const configs = loadProviderConfigs();
+  const configs = await loadProviderConfigsFromDB();
   const allowedIds = new Set(configs.map((item) => item.id));
   const pollIntervalMs = getPollingIntervalMs();
   const pollIntervalLabel = getPollingIntervalLabel();

@@ -34,9 +34,8 @@ async function tick() {
   try {
     const results = await runProviderChecks();
     if (results.length === 0) {
-      const groups = process.env.CHECK_GROUPS ?? "";
       console.log(
-        `[check-cx] 未检测到任何有效配置，CHECK_GROUPS="${groups}"，本轮 ping 结束`
+        `[check-cx] 数据库中未找到启用的配置，本轮 ping 结束`
       );
       return;
     }

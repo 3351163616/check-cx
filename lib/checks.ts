@@ -1,9 +1,10 @@
 import "server-only";
+import { createClient } from "./supabase/server";
 
 export type ProviderType = "openai" | "gemini" | "anthropic";
 
 export interface ProviderConfig {
-  id: string;
+  id: string; // UUID from database
   name: string;
   type: ProviderType;
   endpoint: string;
@@ -34,48 +35,54 @@ const DEFAULT_ENDPOINTS: Record<ProviderType, string> = {
 const DEFAULT_TIMEOUT_MS = 15_000;
 const DEGRADED_THRESHOLD_MS = 6_000;
 
-export function loadProviderConfigs(): ProviderConfig[] {
-  const groupList = (process.env.CHECK_GROUPS ?? "")
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean);
+/**
+ * 从数据库加载配置
+ */
+export async function loadProviderConfigsFromDB(): Promise<ProviderConfig[]> {
+  try {
+    const supabase = await createClient();
+    const { data, error } = await supabase
+      .from("check_configs")
+      .select("id, name, type, model, endpoint, api_key")
+      .eq("enabled", true)
+      .order("id");
 
-  const configs: ProviderConfig[] = [];
-
-  for (const groupId of groupList) {
-    const upperId = groupId.toUpperCase();
-    const read = (suffix: string) => process.env[`CHECK_${upperId}_${suffix}`]?.trim();
-
-    const type = normalizeType(read("TYPE"));
-    const apiKey = read("KEY");
-    const model = read("MODEL");
-    const endpoint = read("ENDPOINT") || DEFAULT_ENDPOINTS[type ?? "openai"];
-    const name = read("NAME") || groupId;
-
-    if (!type || !apiKey || !model) {
-      console.warn(
-        `[check-cx] 跳过配置 ${groupId}：缺少TYPE/KEY/MODEL，其中 type=${type}, key=${maskKey(
-          apiKey
-        )}, model=${model}`
-      );
-      continue;
+    if (error) {
+      console.error("[check-cx] 从数据库加载配置失败:", error);
+      return [];
     }
 
-    configs.push({
-      id: groupId,
-      name,
-      type,
-      endpoint,
-      model,
-      apiKey,
-    });
-  }
+    if (!data || data.length === 0) {
+      console.warn("[check-cx] 数据库中没有找到启用的配置");
+      return [];
+    }
 
-  return configs;
+    const configs: ProviderConfig[] = data.map((row: {
+      id: string;
+      name: string;
+      type: string;
+      model: string;
+      endpoint: string;
+      api_key: string;
+    }) => ({
+      id: row.id,
+      name: row.name,
+      type: row.type as ProviderType,
+      endpoint: row.endpoint,
+      model: row.model,
+      apiKey: row.api_key,
+    }));
+
+    console.log(`[check-cx] 成功加载 ${configs.length} 个配置:`, configs.map(c => c.id).join(", "));
+    return configs;
+  } catch (error) {
+    console.error("[check-cx] 加载配置时发生异常:", error);
+    return [];
+  }
 }
 
 export async function runProviderChecks(): Promise<CheckResult[]> {
-  const configs = loadProviderConfigs();
+  const configs = await loadProviderConfigsFromDB();
   if (configs.length === 0) {
     return [];
   }

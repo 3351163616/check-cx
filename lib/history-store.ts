@@ -24,10 +24,19 @@ export async function loadHistory(): Promise<HistoryMap> {
     const supabase = getSupabaseClient();
     const cutoff = new Date(Date.now() - HISTORY_WINDOW_MS).toISOString();
 
-    // 从数据库查询最近 1 小时内的记录
+    // 从数据库查询最近 1 小时内的记录,使用 JOIN 获取配置信息
     const { data, error } = await supabase
       .from("check_history")
-      .select("*")
+      .select(`
+        *,
+        check_configs!fk_config (
+          id,
+          name,
+          type,
+          model,
+          endpoint
+        )
+      `)
       .gte("checked_at", cutoff)
       .order("checked_at", { ascending: false })
       .limit(MAX_POINTS_PER_PROVIDER * 10); // 预留足够的数据
@@ -40,12 +49,18 @@ export async function loadHistory(): Promise<HistoryMap> {
     // 转换为 HistoryMap 格式
     const history: HistoryMap = {};
     for (const record of data || []) {
+      const config = record.check_configs;
+      if (!config) {
+        console.warn(`[check-cx] 记录 ${record.id} 的配置不存在,跳过`);
+        continue;
+      }
+
       const result: CheckResult = {
-        id: record.provider_id,
-        name: record.provider_name,
-        type: record.provider_type,
-        endpoint: record.endpoint,
-        model: record.model,
+        id: config.id,
+        name: config.name,
+        type: config.type,
+        endpoint: config.endpoint,
+        model: config.model,
         status: record.status as "operational" | "degraded" | "failed",
         latencyMs: record.latency_ms,
         checkedAt: record.checked_at,
@@ -89,13 +104,9 @@ export async function appendHistory(
   try {
     const supabase = getSupabaseClient();
 
-    // 将结果写入数据库
+    // 将结果写入数据库,仅写入必要字段
     const records = results.map((result) => ({
-      provider_id: result.id,
-      provider_name: result.name,
-      provider_type: result.type,
-      endpoint: result.endpoint,
-      model: result.model,
+      config_id: result.id,
       status: result.status,
       latency_ms: result.latencyMs,
       checked_at: result.checkedAt,
@@ -110,38 +121,38 @@ export async function appendHistory(
 
     // 清理超出限制的数据（每个提供商只保留最新 60 条记录）
     try {
-      // 获取所有唯一的 provider_id
+      // 获取所有唯一的 config_id
       const { data: providers, error: providerError } = await supabase
         .from("check_history")
-        .select("provider_id")
-        .order("provider_id");
+        .select("config_id")
+        .order("config_id");
 
       if (providerError) {
-        console.error("[check-cx] 查询 provider_id 失败", providerError);
+        console.error("[check-cx] 查询 config_id 失败", providerError);
       } else if (providers) {
-        // 去重获取唯一的 provider_id
+        // 去重获取唯一的 config_id
         const uniqueProviders = [
-          ...new Set(providers.map((p) => p.provider_id)),
+          ...new Set(providers.map((p) => p.config_id)),
         ];
 
-        // 对每个提供商，删除超出限制的旧记录
-        for (const providerId of uniqueProviders) {
-          // 获取该提供商的所有记录，按时间倒序
+        // 对每个提供商,删除超出限制的旧记录
+        for (const configId of uniqueProviders) {
+          // 获取该提供商的所有记录,按时间倒序
           const { data: records, error: recordError } = await supabase
             .from("check_history")
             .select("id, checked_at")
-            .eq("provider_id", providerId)
+            .eq("config_id", configId)
             .order("checked_at", { ascending: false });
 
           if (recordError) {
             console.error(
-              `[check-cx] 查询 provider ${providerId} 的记录失败`,
+              `[check-cx] 查询 config ${configId} 的记录失败`,
               recordError
             );
             continue;
           }
 
-          // 如果超过 60 条，删除多余的旧记录
+          // 如果超过 60 条,删除多余的旧记录
           if (records && records.length > MAX_POINTS_PER_PROVIDER) {
             const recordsToDelete = records
               .slice(MAX_POINTS_PER_PROVIDER)
@@ -154,7 +165,7 @@ export async function appendHistory(
 
             if (deleteError) {
               console.error(
-                `[check-cx] 删除 provider ${providerId} 的旧记录失败`,
+                `[check-cx] 删除 config ${configId} 的旧记录失败`,
                 deleteError
               );
             }
