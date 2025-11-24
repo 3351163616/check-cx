@@ -18,6 +18,7 @@ export interface ProviderConfig {
   model: string;
   apiKey: string;
   is_maintenance: boolean;
+  userAgent?: string | null;
 }
 
 /**

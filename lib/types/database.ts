@@ -15,6 +15,7 @@ export interface CheckConfigRow {
   api_key: string;
   enabled: boolean;
   is_maintenance: boolean;
+  user_agent?: string | null;
   created_at?: string;
 }
 

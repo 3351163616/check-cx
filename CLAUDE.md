@@ -79,8 +79,9 @@ lib/
 配置已从环境变量迁移到 Supabase 数据库的 `check_configs` 表:
 
 - **配置加载**: `lib/database/config-loader.ts:loadProviderConfigsFromDB()` 从数据库读取已启用的配置
-- **表结构**: 包含 `id`(UUID)、`name`、`type`、`model`、`endpoint`、`api_key`、`enabled` 字段
+- **表结构**: 包含 `id`(UUID)、`name`、`type`、`model`、`endpoint`、`api_key`、`enabled`、`user_agent` 字段
 - **动态启用/禁用**: 通过更新数据库 `enabled` 字段即可控制检测任务,无需重启应用
+- **自定义 User-Agent**: 通过配置 `user_agent` 字段自定义请求头,可绕过特定的 API 请求限制
 - **类型安全**: 使用 `lib/types/database.ts` 中定义的 `CheckConfigRow` 类型
 
 ### 健康检查流程
@@ -136,7 +137,8 @@ check_configs (
   model TEXT NOT NULL,
   endpoint TEXT NOT NULL,
   api_key TEXT NOT NULL,
-  enabled BOOLEAN DEFAULT true
+  enabled BOOLEAN DEFAULT true,
+  user_agent TEXT  -- 自定义 User-Agent,为 NULL 时使用默认值
 )
 
 -- 历史记录表
@@ -238,6 +240,22 @@ INSERT INTO check_configs (name, type, model, endpoint, api_key, enabled)
 VALUES ('主力 OpenAI', 'openai', 'gpt-4o-mini',
         'https://api.openai.com/v1/chat/completions',
         'sk-xxx', true);
+
+-- 添加配置并设置自定义 User-Agent
+INSERT INTO check_configs (name, type, model, endpoint, api_key, enabled, user_agent)
+VALUES ('自定义 UA OpenAI', 'openai', 'gpt-4o-mini',
+        'https://api.example.com/v1/chat/completions',
+        'sk-xxx', true, 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
+
+-- 更新已有配置的 User-Agent
+UPDATE check_configs
+SET user_agent = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)'
+WHERE name = '主力 OpenAI';
+
+-- 清除自定义 User-Agent(恢复使用默认值)
+UPDATE check_configs
+SET user_agent = NULL
+WHERE name = '主力 OpenAI';
 
 -- 禁用配置
 UPDATE check_configs SET enabled = false WHERE name = '主力 OpenAI';

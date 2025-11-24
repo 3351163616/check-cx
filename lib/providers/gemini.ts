@@ -79,11 +79,14 @@ function getGeminiClient(config: ProviderConfig): OpenAI {
     return cached;
   }
 
+  // 使用自定义 User-Agent 或默认值
+  const userAgent = config.userAgent || "check-cx/0.1.0";
+
   const client = new OpenAI({
     apiKey: config.apiKey,
     baseURL,
     defaultHeaders: {
-      "User-Agent": "check-cx/0.1.0",
+      "User-Agent": userAgent,
     },
   });
 

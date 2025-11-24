@@ -32,6 +32,7 @@ export interface StreamCheckParams {
   displayEndpoint?: string;
   init: RequestInit;
   parseStream: StreamParser;
+  userAgent?: string | null;
 }
 
 /**
@@ -48,11 +49,18 @@ export async function runStreamCheck(
     params.displayEndpoint || config.endpoint || DEFAULT_ENDPOINTS[config.type];
   const pingPromise = measureEndpointPing(displayEndpoint);
 
+  // 使用自定义 User-Agent 或默认值
+  const userAgent = params.userAgent || config.userAgent || "check-cx/0.1.0";
+
   try {
     const response = await fetch(params.url, {
       method: "POST",
       signal: controller.signal,
       ...params.init,
+      headers: {
+        "User-Agent": userAgent,
+        ...(params.init.headers || {}),
+      },
     });
 
     if (!response.ok) {

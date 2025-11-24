@@ -135,6 +135,9 @@ function getOpenAIClient(config: ProviderConfig): OpenAI {
     return cached;
   }
 
+  // 使用自定义 User-Agent 或默认值
+  const userAgent = config.userAgent || "check-cx/0.1.0";
+
   const client = new OpenAI({
     apiKey: config.apiKey,
     baseURL,
@@ -142,7 +145,7 @@ function getOpenAIClient(config: ProviderConfig): OpenAI {
     // 会对默认的 OpenAI User-Agent（如 `OpenAI/TS ...`）返回 402 Your request was blocked.
     // 这里统一改成一个普通应用的 UA，避免被误判为爬虫。
     defaultHeaders: {
-      "User-Agent": "check-cx/0.1.0",
+      "User-Agent": userAgent,
     },
   });
 

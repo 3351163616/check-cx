@@ -80,6 +80,9 @@ function getAnthropicClient(config: ProviderConfig): Anthropic {
     return cached;
   }
 
+  // 使用自定义 User-Agent 或默认值
+  const userAgent = config.userAgent || "check-cx/0.1.0";
+
   const client = new Anthropic({
     apiKey: config.apiKey,
     baseURL,
@@ -87,7 +90,7 @@ function getAnthropicClient(config: ProviderConfig): Anthropic {
     // 会对默认的 Anthropic User-Agent（如 `anthropic-ts-sdk/...`）返回 402 Your request was blocked.
     // 这里统一改成一个普通应用的 UA，避免被误判为爬虫。
     defaultHeaders: {
-      "User-Agent": "check-cx/0.1.0",
+      "User-Agent": userAgent,
     },
   });
 

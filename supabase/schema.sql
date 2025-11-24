@@ -26,6 +26,7 @@ CREATE TABLE public.check_configs (
     api_key text NOT NULL,
     enabled boolean DEFAULT true,
     is_maintenance boolean DEFAULT false,
+    user_agent text,
     created_at timestamp with time zone DEFAULT now(),
     updated_at timestamp with time zone DEFAULT now(),
     CONSTRAINT check_configs_pkey PRIMARY KEY (id)
@@ -150,6 +151,7 @@ COMMENT ON COLUMN public.check_configs.endpoint IS 'API 端点 URL - 完整的 A
 COMMENT ON COLUMN public.check_configs.api_key IS 'API 密钥 - 用于身份验证的密钥,明文存储(依赖 RLS 保护)';
 COMMENT ON COLUMN public.check_configs.enabled IS '是否启用 - true: 启用检测, false: 禁用检测';
 COMMENT ON COLUMN public.check_configs.is_maintenance IS '维护模式标记 - true: 停止健康检查, false: 正常检查';
+COMMENT ON COLUMN public.check_configs.user_agent IS '自定义 User-Agent - 用于请求时的 User-Agent 头,为 NULL 时使用默认值';
 COMMENT ON COLUMN public.check_configs.created_at IS '创建时间 - 配置首次创建的时间戳';
 COMMENT ON COLUMN public.check_configs.updated_at IS '更新时间 - 配置最后修改的时间戳,由触发器自动维护';
 
