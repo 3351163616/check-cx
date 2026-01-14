@@ -110,8 +110,10 @@ async function tick() {
 
 // 自动初始化轮询器
 if (!getPollerTimer()) {
-  console.log(`[check-cx] 初始化后台轮询器，interval=${POLL_INTERVAL_MS}ms`);
-  tick().catch((error) => console.error("[check-cx] 初次检测失败", error));
+  const firstCheckAt = new Date(Date.now() + POLL_INTERVAL_MS).toISOString();
+  console.log(
+    `[check-cx] 初始化后台轮询器，interval=${POLL_INTERVAL_MS}ms，首次检测预计 ${firstCheckAt}`
+  );
   const timer = setInterval(() => {
     tick().catch((error) => console.error("[check-cx] 定时检测失败", error));
   }, POLL_INTERVAL_MS);
