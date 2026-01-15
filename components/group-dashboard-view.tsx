@@ -6,6 +6,7 @@ import {Activity, ExternalLink, RefreshCcw} from "lucide-react";
 import {GroupTags} from "@/components/group-tags";
 import {ProviderCard} from "@/components/provider-card";
 import {ClientTime} from "@/components/client-time";
+import {fetchGroupWithCache, setGroupCache} from "@/lib/core/group-frontend-cache";
 import type {AvailabilityPeriod, ProviderTimeline} from "@/lib/types";
 import type {GroupDashboardData} from "@/lib/core/group-data";
 import {cn} from "@/lib/utils";
@@ -81,7 +82,12 @@ export function GroupDashboardView({ groupName, initialData }: GroupDashboardVie
     [data.providerTimelines]
   );
 
-  const refresh = useCallback(async (period?: AvailabilityPeriod) => {
+  const refresh = useCallback(
+    async (
+      period?: AvailabilityPeriod,
+      forceFresh?: boolean,
+      revalidateIfFresh?: boolean
+    ) => {
     if (lockRef.current) {
       return;
     }
@@ -89,17 +95,16 @@ export function GroupDashboardView({ groupName, initialData }: GroupDashboardVie
     setIsRefreshing(true);
     try {
       const targetPeriod = period ?? selectedPeriod;
-      const response = await fetch(
-        `/api/group/${encodeURIComponent(groupName)}?trendPeriod=${targetPeriod}`,
-        {
-        cache: "no-store",
-        }
-      );
-      if (!response.ok) {
-        throw new Error("刷新数据失败");
-      }
-      const next = (await response.json()) as GroupDashboardData;
-      setData(next);
+      const result = await fetchGroupWithCache({
+        groupName,
+        trendPeriod: targetPeriod,
+        forceFresh,
+        revalidateIfFresh,
+        onBackgroundUpdate: (newData) => {
+          setData(newData);
+        },
+      });
+      setData(result.data);
     } catch (error) {
       console.error("[check-cx] 分组自动刷新失败", error);
     } finally {
@@ -110,7 +115,10 @@ export function GroupDashboardView({ groupName, initialData }: GroupDashboardVie
 
   useEffect(() => {
     setData(initialData);
-  }, [initialData]);
+    if (initialData.trendPeriod) {
+      setGroupCache(groupName, initialData.trendPeriod, initialData);
+    }
+  }, [groupName, initialData]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -141,7 +149,7 @@ export function GroupDashboardView({ groupName, initialData }: GroupDashboardVie
       return;
     }
     const timer = window.setInterval(() => {
-      refresh().catch(() => undefined);
+      refresh(undefined, false, true).catch(() => undefined);
     }, data.pollIntervalMs);
     return () => window.clearInterval(timer);
   }, [data.pollIntervalMs, refresh]);

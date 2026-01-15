@@ -9,14 +9,15 @@
 
 import type { DashboardData, AvailabilityPeriod } from "../types";
 
-/** 缓存有效期：2 分钟 */
-const CACHE_TTL_MS = 2 * 60 * 1000;
+/** 缓存有效期默认值：2 分钟 */
+const DEFAULT_CACHE_TTL_MS = 2 * 60 * 1000;
 
 /** 缓存条目 */
 interface CacheEntry {
   data: DashboardData;
   timestamp: number;
   etag?: string;
+  ttlMs: number;
 }
 
 /** 缓存键生成 */
@@ -32,7 +33,7 @@ const pendingRequests = new Map<string, Promise<DashboardData | null>>();
 
 /** 检查缓存是否过期 */
 function isExpired(entry: CacheEntry): boolean {
-  return Date.now() - entry.timestamp >= CACHE_TTL_MS;
+  return Date.now() - entry.timestamp >= entry.ttlMs;
 }
 
 /** 获取缓存 */
@@ -49,10 +50,15 @@ export function setCache(
   etag?: string
 ): void {
   const key = getCacheKey(trendPeriod);
+  const ttlMs =
+    Number.isFinite(data.pollIntervalMs) && data.pollIntervalMs > 0
+      ? data.pollIntervalMs
+      : DEFAULT_CACHE_TTL_MS;
   cache.set(key, {
     data,
     timestamp: Date.now(),
     etag,
+    ttlMs,
   });
 }
 
@@ -153,6 +159,7 @@ export interface FetchWithCacheOptions {
   trendPeriod: AvailabilityPeriod;
   forceFresh?: boolean;
   onBackgroundUpdate?: (data: DashboardData) => void;
+  revalidateIfFresh?: boolean;
 }
 
 export interface FetchWithCacheResult {
@@ -171,7 +178,7 @@ export interface FetchWithCacheResult {
 export async function fetchWithCache(
   options: FetchWithCacheOptions
 ): Promise<FetchWithCacheResult> {
-  const { trendPeriod, forceFresh, onBackgroundUpdate } = options;
+  const { trendPeriod, forceFresh, onBackgroundUpdate, revalidateIfFresh } = options;
   const cached = getCache(trendPeriod);
 
   // 强制刷新：忽略缓存
@@ -190,6 +197,10 @@ export async function fetchWithCache(
 
   // 缓存有效：直接返回
   if (cached && !isExpired(cached)) {
+    if (revalidateIfFresh) {
+      revalidateInBackground(trendPeriod, cached.etag, onBackgroundUpdate);
+      return { data: cached.data, fromCache: true, isRevalidating: true };
+    }
     return { data: cached.data, fromCache: true, isRevalidating: false };
   }
 

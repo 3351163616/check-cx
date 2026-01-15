@@ -371,13 +371,19 @@ export function DashboardView({ initialData }: DashboardViewProps) {
     }
   }, []);
 
-  const refresh = useCallback(async (period?: AvailabilityPeriod, forceFresh?: boolean) => {
+  const refresh = useCallback(
+    async (
+      period?: AvailabilityPeriod,
+      forceFresh?: boolean,
+      revalidateIfFresh?: boolean
+    ) => {
     setIsRefreshing(true);
     try {
       const targetPeriod = period ?? selectedPeriod;
       const result = await fetchWithCache({
         trendPeriod: targetPeriod,
         forceFresh,
+        revalidateIfFresh,
         onBackgroundUpdate: (newData) => {
           // SWR 模式：后台刷新完成后更新 UI
           setData(newData);
@@ -424,7 +430,7 @@ export function DashboardView({ initialData }: DashboardViewProps) {
       return;
     }
     const timer = window.setInterval(() => {
-      refresh().catch(() => undefined);
+      refresh(undefined, false, true).catch(() => undefined);
     }, data.pollIntervalMs);
     return () => window.clearInterval(timer);
   }, [data.pollIntervalMs, refresh]);

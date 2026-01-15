@@ -38,7 +38,8 @@ export async function GET(request: Request) {
   });
 
   // 生成 ETag（基于数据内容）
-  const jsonBody = JSON.stringify(data);
+  const { generatedAt: _generatedAt, ...etagPayload } = data;
+  const jsonBody = JSON.stringify(etagPayload);
   const etag = generateETag(jsonBody);
 
   // 检查条件请求
