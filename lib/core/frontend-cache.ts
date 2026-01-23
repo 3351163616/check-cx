@@ -21,11 +21,8 @@ interface CacheEntry {
 }
 
 /** 缓存键生成 */
-function getCacheKey(
-  trendPeriod: AvailabilityPeriod,
-  includeDetails: boolean
-): string {
-  return `dashboard:${trendPeriod}:${includeDetails ? "full" : "summary"}`;
+function getCacheKey(trendPeriod: AvailabilityPeriod): string {
+  return `dashboard:${trendPeriod}`;
 }
 
 interface FrontendCacheMetrics {
@@ -88,11 +85,8 @@ function isFresh(entry: CacheEntry): boolean {
 }
 
 /** 获取缓存 */
-export function getCache(
-  trendPeriod: AvailabilityPeriod,
-  includeDetails: boolean
-): CacheEntry | null {
-  const key = getCacheKey(trendPeriod, includeDetails);
+export function getCache(trendPeriod: AvailabilityPeriod): CacheEntry | null {
+  const key = getCacheKey(trendPeriod);
   const entry = cache.get(key);
   return entry ?? null;
 }
@@ -101,10 +95,9 @@ export function getCache(
 export function setCache(
   trendPeriod: AvailabilityPeriod,
   data: DashboardData,
-  includeDetails: boolean,
   etag?: string
 ): void {
-  const key = getCacheKey(trendPeriod, includeDetails);
+  const key = getCacheKey(trendPeriod);
   const ttlMs =
     Number.isFinite(data.pollIntervalMs) && data.pollIntervalMs > 0
       ? data.pollIntervalMs
@@ -118,8 +111,8 @@ export function setCache(
 }
 
 /** 更新缓存时间戳（用于 304 响应） */
-export function touchCache(trendPeriod: AvailabilityPeriod, includeDetails: boolean): void {
-  const key = getCacheKey(trendPeriod, includeDetails);
+export function touchCache(trendPeriod: AvailabilityPeriod): void {
+  const key = getCacheKey(trendPeriod);
   const entry = cache.get(key);
   if (entry) {
     entry.timestamp = Date.now();
@@ -138,7 +131,7 @@ export async function prefetchDashboardData(
   const targets = periods.filter((period) => period !== currentPeriod);
   await Promise.all(
     targets.map(async (trendPeriod) => {
-      const key = getCacheKey(trendPeriod, false);
+      const key = getCacheKey(trendPeriod);
       const cached = cache.get(key);
       if (cached && isFresh(cached)) {
         return;
@@ -147,12 +140,12 @@ export async function prefetchDashboardData(
         return;
       }
 
-      const request = fetchFromNetwork(trendPeriod, cached?.etag, false, false)
+      const request = fetchFromNetwork(trendPeriod, cached?.etag, false)
         .then(({ data, etag }) => {
           if (data) {
-            setCache(trendPeriod, data, false, etag);
+            setCache(trendPeriod, data, etag);
           } else if (cached) {
-            touchCache(trendPeriod, false);
+            touchCache(trendPeriod);
           }
           return data;
         })
@@ -180,13 +173,9 @@ export async function prefetchDashboardData(
 async function fetchFromNetwork(
   trendPeriod: AvailabilityPeriod,
   etag?: string,
-  forceFresh?: boolean,
-  includeDetails?: boolean
+  forceFresh?: boolean
 ): Promise<{ data: DashboardData | null; etag?: string }> {
   const params = new URLSearchParams({ trendPeriod });
-  if (includeDetails) {
-    params.set("includeDetails", "1");
-  }
   if (forceFresh) {
     params.set("forceRefresh", "1");
     params.set("_t", String(Date.now()));
@@ -222,25 +211,24 @@ async function fetchFromNetwork(
 function revalidateInBackground(
   trendPeriod: AvailabilityPeriod,
   etag?: string,
-  includeDetails?: boolean,
   onUpdate?: (data: DashboardData) => void
 ): void {
-  const key = getCacheKey(trendPeriod, Boolean(includeDetails));
+  const key = getCacheKey(trendPeriod);
 
   // 如果已有请求在进行，不重复发起
   if (pendingRequests.has(key)) {
     return;
   }
 
-  const request = fetchFromNetwork(trendPeriod, etag, false, includeDetails)
+  const request = fetchFromNetwork(trendPeriod, etag, false)
     .then(({ data, etag: newEtag }) => {
       if (data) {
-        setCache(trendPeriod, data, Boolean(includeDetails), newEtag);
+        setCache(trendPeriod, data, newEtag);
         onUpdate?.(data);
         return data;
       } else {
         // 304 响应，更新时间戳
-        touchCache(trendPeriod, Boolean(includeDetails));
+        touchCache(trendPeriod);
         return null;
       }
     })
@@ -260,7 +248,6 @@ export interface FetchWithCacheOptions {
   forceFresh?: boolean;
   onBackgroundUpdate?: (data: DashboardData) => void;
   revalidateIfFresh?: boolean;
-  includeDetails?: boolean;
 }
 
 export interface FetchWithCacheResult {
@@ -279,17 +266,16 @@ export interface FetchWithCacheResult {
 export async function fetchWithCache(
   options: FetchWithCacheOptions
 ): Promise<FetchWithCacheResult> {
-  const { trendPeriod, forceFresh, onBackgroundUpdate, revalidateIfFresh, includeDetails } = options;
-  const includeFull = Boolean(includeDetails);
-  const cached = getCache(trendPeriod, includeFull);
-  const key = getCacheKey(trendPeriod, includeFull);
+  const { trendPeriod, forceFresh, onBackgroundUpdate, revalidateIfFresh } = options;
+  const cached = getCache(trendPeriod);
+  const key = getCacheKey(trendPeriod);
 
   // 强制刷新：忽略缓存
   if (forceFresh) {
-    const { data, etag } = await fetchFromNetwork(trendPeriod, undefined, true, includeFull);
+    const { data, etag } = await fetchFromNetwork(trendPeriod, undefined, true);
     if (data) {
       recordMiss(true);
-      setCache(trendPeriod, data, includeFull, etag);
+      setCache(trendPeriod, data, etag);
       return { data, fromCache: false, isRevalidating: false };
     }
     // 理论上强制刷新不应该返回 304，但做兜底
@@ -303,7 +289,7 @@ export async function fetchWithCache(
   // 缓存有效：直接返回
   if (cached && !isExpired(cached)) {
     if (revalidateIfFresh) {
-      revalidateInBackground(trendPeriod, cached.etag, includeFull, onBackgroundUpdate);
+      revalidateInBackground(trendPeriod, cached.etag, onBackgroundUpdate);
       recordHit(false);
       return { data: cached.data, fromCache: true, isRevalidating: true };
     }
@@ -313,7 +299,7 @@ export async function fetchWithCache(
 
   // 缓存过期但存在：返回旧数据，后台刷新
   if (cached) {
-    revalidateInBackground(trendPeriod, cached.etag, includeFull, onBackgroundUpdate);
+    revalidateInBackground(trendPeriod, cached.etag, onBackgroundUpdate);
     recordHit(true);
     return { data: cached.data, fromCache: true, isRevalidating: true };
   }
@@ -322,7 +308,7 @@ export async function fetchWithCache(
   const inflight = pendingRequests.get(key);
   if (inflight) {
     const data = await inflight;
-    const latestCache = getCache(trendPeriod, includeFull);
+    const latestCache = getCache(trendPeriod);
     if (data) {
       recordHit(false);
       return { data, fromCache: true, isRevalidating: false };
@@ -334,10 +320,10 @@ export async function fetchWithCache(
   }
 
   // 无缓存：等待请求
-  const { data, etag } = await fetchFromNetwork(trendPeriod, undefined, false, includeFull);
+  const { data, etag } = await fetchFromNetwork(trendPeriod, undefined, false);
   if (data) {
     recordMiss(false);
-    setCache(trendPeriod, data, includeFull, etag);
+    setCache(trendPeriod, data, etag);
     return { data, fromCache: false, isRevalidating: false };
   }
 

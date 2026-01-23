@@ -16,11 +16,8 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const period = searchParams.get("trendPeriod");
   const forceRefreshParam = searchParams.get("forceRefresh");
-  const includeDetailsParam = searchParams.get("includeDetails");
   const shouldForceRefresh =
     forceRefreshParam === "1" || forceRefreshParam === "true";
-  const includeDetails =
-    includeDetailsParam === "1" || includeDetailsParam === "true";
   const trendPeriod = VALID_PERIODS.includes(period as AvailabilityPeriod)
     ? (period as AvailabilityPeriod)
     : undefined;
@@ -28,7 +25,6 @@ export async function GET(request: Request) {
   const { data, etag } = await loadDashboardDataWithEtag({
     refreshMode: shouldForceRefresh ? "always" : "never",
     trendPeriod,
-    includeDetails,
   });
 
   // 检查条件请求

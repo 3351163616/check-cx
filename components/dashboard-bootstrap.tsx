@@ -18,7 +18,6 @@ export function DashboardBootstrap() {
       const result = await fetchWithCache({
         trendPeriod: DEFAULT_PERIOD,
         forceFresh,
-        includeDetails: false,
         revalidateIfFresh: true,
         onBackgroundUpdate: (nextData) => {
           setData(nextData);
@@ -38,7 +37,6 @@ export function DashboardBootstrap() {
       try {
         const result = await fetchWithCache({
           trendPeriod: DEFAULT_PERIOD,
-          includeDetails: false,
           revalidateIfFresh: true,
           onBackgroundUpdate: (nextData) => {
             if (isActive) {

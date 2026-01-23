@@ -110,9 +110,7 @@ pnpm lint   # 代码检查
 
 ## API 概览
 
-- `GET /api/dashboard?trendPeriod=7d|15d|30d[&includeDetails=1]`：Dashboard 聚合数据（带 ETag）。分组数据已前移到客户端（API
-  不再返回 `groupedTimelines`，改为 `groupInfos`）。默认仅返回每个 Provider 的最新时间线样本，`includeDetails=1`
-  用于返回完整时间线 + 可用性统计。
+- `GET /api/dashboard?trendPeriod=7d|15d|30d`：Dashboard 聚合数据（带 ETag）。返回完整时间线与可用性统计。
 - `GET /api/group/[groupName]?trendPeriod=7d|15d|30d`：分组详情数据。
 - `GET /api/v1/status?group=...&model=...`：对外只读状态 API。
 

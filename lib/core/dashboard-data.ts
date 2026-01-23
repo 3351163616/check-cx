@@ -44,16 +44,14 @@ export function resetDashboardCacheMetrics(): void {
 }
 
 const DEFAULT_DASHBOARD_CACHE_TTL_MS = 5 * 60 * 1000;
-const SUMMARY_HISTORY_LIMIT = 1;
 const dashboardCache = new Map<string, DashboardCacheEntry>();
 
 function getDashboardCacheKey(
   pollIntervalMs: number,
   providerKey: string,
-  trendPeriod: AvailabilityPeriod,
-  includeDetails: boolean
+  trendPeriod: AvailabilityPeriod
 ): string {
-  return `dashboard:${pollIntervalMs}:${trendPeriod}:${includeDetails ? "full" : "summary"}:${providerKey}`;
+  return `dashboard:${pollIntervalMs}:${trendPeriod}:${providerKey}`;
 }
 
 function getDashboardCacheTtlMs(pollIntervalMs: number): number {
@@ -94,7 +92,6 @@ export interface DashboardLoadResult {
 export async function loadDashboardData(options?: {
   refreshMode?: RefreshMode;
   trendPeriod?: AvailabilityPeriod;
-  includeDetails?: boolean;
 }): Promise<DashboardData> {
   const result = await loadDashboardDataInternal(options);
   return result.data;
@@ -103,7 +100,6 @@ export async function loadDashboardData(options?: {
 export async function loadDashboardDataWithEtag(options?: {
   refreshMode?: RefreshMode;
   trendPeriod?: AvailabilityPeriod;
-  includeDetails?: boolean;
 }): Promise<DashboardLoadResult> {
   return loadDashboardDataInternal(options);
 }
@@ -111,7 +107,6 @@ export async function loadDashboardDataWithEtag(options?: {
 async function loadDashboardDataInternal(options?: {
   refreshMode?: RefreshMode;
   trendPeriod?: AvailabilityPeriod;
-  includeDetails?: boolean;
 }): Promise<DashboardLoadResult> {
   ensureOfficialStatusPoller();
   const allConfigs = await loadProviderConfigsFromDB();
@@ -125,13 +120,11 @@ async function loadDashboardDataInternal(options?: {
     allowedIds.size > 0 ? [...allowedIds].sort().join("|") : "__empty__";
   const refreshMode = options?.refreshMode ?? "missing";
   const trendPeriod = options?.trendPeriod ?? "7d";
-  const includeDetails = options?.includeDetails ?? false;
-  const cacheKey = `dashboard:${pollIntervalMs}:${providerKey}:${includeDetails ? "full" : "summary"}`;
+  const cacheKey = `dashboard:${pollIntervalMs}:${providerKey}`;
   const cacheKeyWithPeriod = getDashboardCacheKey(
     pollIntervalMs,
     providerKey,
-    trendPeriod,
-    includeDetails
+    trendPeriod
   );
   const cacheTtlMs = getDashboardCacheTtlMs(pollIntervalMs);
   const now = Date.now();
@@ -144,7 +137,6 @@ async function loadDashboardDataInternal(options?: {
         pollIntervalMs,
         activeConfigs,
         allowedIds,
-        limitPerConfig: includeDetails ? undefined : SUMMARY_HISTORY_LIMIT,
       },
       refreshMode
     );
@@ -168,11 +160,8 @@ async function loadDashboardDataInternal(options?: {
       websiteUrl: info.website_url ?? null,
       tags: info.tags ?? "",
     }));
-    let availabilityStats;
-    if (includeDetails) {
-      const configIds = allConfigs.map((config) => config.id);
-      availabilityStats = await getAvailabilityStats(configIds);
-    }
+    const configIds = allConfigs.map((config) => config.id);
+    const availabilityStats = await getAvailabilityStats(configIds);
 
     const data: DashboardData = {
       providerTimelines,
@@ -181,7 +170,7 @@ async function loadDashboardDataInternal(options?: {
       total: providerTimelines.length,
       pollIntervalLabel,
       pollIntervalMs,
-      ...(includeDetails ? { availabilityStats } : {}),
+      availabilityStats,
       trendPeriod,
       generatedAt,
     };

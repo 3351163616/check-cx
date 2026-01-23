@@ -486,7 +486,6 @@ export function DashboardView({ initialData }: DashboardViewProps) {
         trendPeriod: targetPeriod,
         forceFresh,
         revalidateIfFresh,
-        includeDetails: false,
         onBackgroundUpdate: (newData) => {
           // SWR 模式：后台刷新完成后更新 UI
           setData(newData);
@@ -504,7 +503,7 @@ export function DashboardView({ initialData }: DashboardViewProps) {
     setData(initialData);
     // 将服务端数据放入前端缓存
     if (initialData.trendPeriod) {
-      setCache(initialData.trendPeriod, initialData, false);
+      setCache(initialData.trendPeriod, initialData);
     }
   }, [initialData]);
 
