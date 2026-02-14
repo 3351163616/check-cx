@@ -18,7 +18,7 @@ export async function generateMetadata({ params }: GroupPageProps) {
   const decodedGroupName = decodeURIComponent(groupName);
 
   return {
-    title: `${decodedGroupName} - AnyRouter 检测站`,
+    title: `${decodedGroupName} - 此方的AnyRouter检测站`,
     description: `查看 ${decodedGroupName} 分组下的模型健康状态`,
   };
 }
