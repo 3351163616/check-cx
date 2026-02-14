@@ -17,7 +17,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "此方的AnyRouter检测站",
+  title: "此方的AnyRouter监测站",
   description: "实时检测 OpenAI / Gemini / Anthropic 对话接口的可用性与延迟",
   icons: {
     icon: "/favicon.png",
