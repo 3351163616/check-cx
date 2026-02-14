@@ -11,6 +11,7 @@ import {getLastPingStartedAt, getPollerTimer, setLastPingStartedAt, setPollerTim
 import {startOfficialStatusPoller} from "./official-status-poller";
 import {ensurePollerLeadership, isPollerLeader} from "./poller-leadership";
 import type {HealthStatus} from "../types";
+import {checkAndNotify} from "./email-notifier";
 
 const POLL_INTERVAL_MS = getPollingIntervalMs();
 
@@ -82,6 +83,9 @@ async function tick() {
         }`
       );
     });
+
+    // 检查是否需要发送告警邮件
+    await checkAndNotify(results);
 
     console.log(`[check-cx] 正在写入历史记录（${results.length} 条）…`);
     await historySnapshotStore.append(results);
