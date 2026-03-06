@@ -15,10 +15,24 @@ export interface CheckConfigRow {
   api_key: string;
   enabled: boolean;
   is_maintenance: boolean;
+  template_id?: string | null;
   request_header?: Record<string, string> | null;
   metadata?: Record<string, unknown> | null;
   group_name?: string | null;
   created_at?: string;
+}
+
+/**
+ * check_request_templates 表的行类型
+ */
+export interface CheckRequestTemplateRow {
+  id: string;
+  name: string;
+  type: string;
+  request_header?: Record<string, string> | null;
+  metadata?: Record<string, unknown> | null;
+  created_at?: string;
+  updated_at?: string;
 }
 
 /**

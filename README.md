@@ -106,6 +106,9 @@ pnpm lint   # 代码检查
     - `/v1/chat/completions` 使用 Chat Completions
     - `/v1/responses` 使用 Responses API
 - `request_header` 与 `metadata` 允许注入自定义请求头与请求体参数。
+- 可选 `template_id` 关联 `check_request_templates`，用于复用默认请求头与 metadata。
+- `check_request_templates.type` 必须与 `check_configs.type` 一致（如 `anthropic` 只能绑定 `anthropic` 模板）。
+- 合并优先级：`template` < `check_configs`（实例配置覆盖模板同名字段）。
 - `is_maintenance = true` 会保留卡片但停止轮询；`enabled = false` 则完全不纳入检测。
 
 ## API 概览

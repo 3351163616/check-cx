@@ -13,6 +13,26 @@ CREATE TYPE public.provider_type AS ENUM ('openai', 'gemini', 'anthropic');
 -- 2. 表结构
 -- -----------------------------------------------------------------------------
 
+-- 请求模板表：存储可复用的请求头与 metadata 默认值
+CREATE TABLE public.check_request_templates (
+    id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    name            text NOT NULL UNIQUE,
+    type            public.provider_type NOT NULL,
+    request_header  jsonb,
+    metadata        jsonb,
+    created_at      timestamptz DEFAULT now(),
+    updated_at      timestamptz DEFAULT now()
+);
+
+COMMENT ON TABLE public.check_request_templates IS '请求模板表，提供可复用的请求头和 metadata 默认值';
+COMMENT ON COLUMN public.check_request_templates.id IS '模板 UUID';
+COMMENT ON COLUMN public.check_request_templates.name IS '模板名称（唯一）';
+COMMENT ON COLUMN public.check_request_templates.type IS '模板提供商类型: openai, gemini, anthropic';
+COMMENT ON COLUMN public.check_request_templates.request_header IS '模板默认请求头 (JSONB)';
+COMMENT ON COLUMN public.check_request_templates.metadata IS '模板默认 metadata，请求体参数 (JSONB)';
+COMMENT ON COLUMN public.check_request_templates.created_at IS '创建时间';
+COMMENT ON COLUMN public.check_request_templates.updated_at IS '更新时间';
+
 -- 配置表：存储 AI 服务商的 API 配置
 CREATE TABLE public.check_configs (
     id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -23,6 +43,7 @@ CREATE TABLE public.check_configs (
     api_key         text NOT NULL,
     enabled         boolean DEFAULT true,
     is_maintenance  boolean DEFAULT false,
+    template_id     uuid REFERENCES public.check_request_templates(id) ON DELETE SET NULL,
     request_header  jsonb,
     group_name      text,
     metadata        jsonb,
@@ -39,6 +60,7 @@ COMMENT ON COLUMN public.check_configs.endpoint IS 'API 端点 URL';
 COMMENT ON COLUMN public.check_configs.api_key IS 'API 密钥';
 COMMENT ON COLUMN public.check_configs.enabled IS '是否启用检测';
 COMMENT ON COLUMN public.check_configs.is_maintenance IS '维护模式，true 时停止检查';
+COMMENT ON COLUMN public.check_configs.template_id IS '请求模板 ID，可为空；实例配置优先级高于模板';
 COMMENT ON COLUMN public.check_configs.request_header IS '自定义请求头 (JSONB)';
 COMMENT ON COLUMN public.check_configs.group_name IS '分组名称，用于 Dashboard 分组展示';
 COMMENT ON COLUMN public.check_configs.metadata IS '自定义请求参数，合并到请求体 (JSONB)';
@@ -122,6 +144,7 @@ ON CONFLICT (lease_key) DO NOTHING;
 CREATE INDEX idx_check_history_config_id ON public.check_history (config_id);
 CREATE INDEX idx_check_history_checked_at ON public.check_history (checked_at DESC);
 CREATE INDEX idx_history_config_checked ON public.check_history (config_id, checked_at DESC);
+CREATE INDEX idx_check_configs_template_id ON public.check_configs (template_id);
 
 -- -----------------------------------------------------------------------------
 -- 4. 视图
@@ -178,12 +201,50 @@ BEGIN
 END;
 $$;
 
+CREATE OR REPLACE FUNCTION public.validate_check_config_template_type()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    template_type public.provider_type;
+BEGIN
+    IF NEW.template_id IS NULL THEN
+        RETURN NEW;
+    END IF;
+
+    SELECT type
+    INTO template_type
+    FROM public.check_request_templates
+    WHERE id = NEW.template_id;
+
+    IF template_type IS NULL THEN
+        RETURN NEW;
+    END IF;
+
+    IF template_type <> NEW.type THEN
+        RAISE EXCEPTION '模板类型不匹配: config.type=%, template.type=%', NEW.type, template_type;
+    END IF;
+
+    RETURN NEW;
+END;
+$$;
+
 -- -----------------------------------------------------------------------------
 -- 6. 触发器
 -- -----------------------------------------------------------------------------
 
 CREATE TRIGGER update_check_configs_updated_at
     BEFORE UPDATE ON public.check_configs
+    FOR EACH ROW
+    EXECUTE FUNCTION public.update_updated_at_column();
+
+CREATE TRIGGER validate_check_configs_template_type
+    BEFORE INSERT OR UPDATE OF template_id, type ON public.check_configs
+    FOR EACH ROW
+    EXECUTE FUNCTION public.validate_check_config_template_type();
+
+CREATE TRIGGER update_check_request_templates_updated_at
+    BEFORE UPDATE ON public.check_request_templates
     FOR EACH ROW
     EXECUTE FUNCTION public.update_updated_at_column();
 
@@ -197,6 +258,7 @@ CREATE TRIGGER update_group_info_updated_at
 -- -----------------------------------------------------------------------------
 
 ALTER TABLE public.check_configs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.check_request_templates ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.check_history ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.group_info ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.system_notifications ENABLE ROW LEVEL SECURITY;
@@ -306,4 +368,3 @@ END;
 $$;
 
 COMMENT ON FUNCTION public.prune_check_history IS '清理超过指定天数的历史记录，默认保留 30 天';
-

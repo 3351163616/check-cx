@@ -19,6 +19,19 @@ CREATE SEQUENCE dev.check_history_id_seq
     MAXVALUE 9223372036854775807
     CACHE 1;
 
+-- 请求模板表
+CREATE TABLE dev.check_request_templates (
+    id uuid NOT NULL DEFAULT gen_random_uuid(),
+    name text NOT NULL,
+    type dev.provider_type NOT NULL,
+    request_header jsonb,
+    metadata jsonb,
+    created_at timestamp with time zone DEFAULT now(),
+    updated_at timestamp with time zone DEFAULT now(),
+    CONSTRAINT check_request_templates_pkey PRIMARY KEY (id),
+    CONSTRAINT check_request_templates_name_key UNIQUE (name)
+);
+
 -- 配置表
 CREATE TABLE dev.check_configs (
     id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -29,12 +42,14 @@ CREATE TABLE dev.check_configs (
     api_key text NOT NULL,
     enabled boolean DEFAULT true,
     is_maintenance boolean DEFAULT false,
+    template_id uuid,
     request_header jsonb,
     group_name text,
     metadata jsonb,
     created_at timestamp with time zone DEFAULT now(),
     updated_at timestamp with time zone DEFAULT now(),
-    CONSTRAINT check_configs_pkey PRIMARY KEY (id)
+    CONSTRAINT check_configs_pkey PRIMARY KEY (id),
+    CONSTRAINT check_configs_template_id_fkey FOREIGN KEY (template_id) REFERENCES dev.check_request_templates(id) ON DELETE SET NULL
 );
 
 -- 历史记录表
@@ -114,6 +129,9 @@ CREATE INDEX idx_dev_check_configs_enabled
     ON dev.check_configs USING btree (enabled)
     WHERE (enabled = true);
 
+CREATE INDEX idx_dev_check_configs_template_id
+    ON dev.check_configs USING btree (template_id);
+
 CREATE INDEX idx_dev_check_history_checked_at
     ON dev.check_history USING btree (checked_at DESC);
 
@@ -170,9 +188,47 @@ BEGIN
 END;
 $function$;
 
+CREATE OR REPLACE FUNCTION dev.validate_check_config_template_type()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $function$
+DECLARE
+  template_type dev.provider_type;
+BEGIN
+  IF NEW.template_id IS NULL THEN
+    RETURN NEW;
+  END IF;
+
+  SELECT type
+  INTO template_type
+  FROM dev.check_request_templates
+  WHERE id = NEW.template_id;
+
+  IF template_type IS NULL THEN
+    RETURN NEW;
+  END IF;
+
+  IF template_type <> NEW.type THEN
+    RAISE EXCEPTION '模板类型不匹配: config.type=%, template.type=%', NEW.type, template_type;
+  END IF;
+
+  RETURN NEW;
+END;
+$function$;
+
 -- 触发器：更新 updated_at
 CREATE TRIGGER update_check_configs_updated_at
 BEFORE UPDATE ON dev.check_configs
+FOR EACH ROW
+EXECUTE FUNCTION dev.update_updated_at_column();
+
+CREATE TRIGGER validate_check_configs_template_type
+BEFORE INSERT OR UPDATE OF template_id, type ON dev.check_configs
+FOR EACH ROW
+EXECUTE FUNCTION dev.validate_check_config_template_type();
+
+CREATE TRIGGER update_check_request_templates_updated_at
+BEFORE UPDATE ON dev.check_request_templates
 FOR EACH ROW
 EXECUTE FUNCTION dev.update_updated_at_column();
 
@@ -183,6 +239,7 @@ EXECUTE FUNCTION dev.update_updated_at_column();
 
 -- 表与列注释
 COMMENT ON TABLE dev.check_configs IS 'AI 服务商配置表 - 存储各个 AI 服务商的 API 配置信息';
+COMMENT ON TABLE dev.check_request_templates IS '请求模板表 - 存储可复用请求头和 metadata 默认值';
 COMMENT ON TABLE dev.check_history IS '健康检测历史记录表 - 存储每次 API 健康检测的结果';
 COMMENT ON TABLE dev.group_info IS '分组信息表 - 存储分组的额外信息';
 COMMENT ON TABLE dev.system_notifications IS '系统通知表 - 存储全局系统通知';
@@ -196,11 +253,20 @@ COMMENT ON COLUMN dev.check_configs.endpoint IS 'API 端点 URL - 完整的 API 
 COMMENT ON COLUMN dev.check_configs.api_key IS 'API 密钥 - 用于身份验证的密钥,明文存储(依赖 RLS 保护)';
 COMMENT ON COLUMN dev.check_configs.enabled IS '是否启用 - true: 启用检测, false: 禁用检测';
 COMMENT ON COLUMN dev.check_configs.is_maintenance IS '维护模式标记 - true 时停止健康检查';
+COMMENT ON COLUMN dev.check_configs.template_id IS '请求模板 ID，可为空；实例配置优先级高于模板';
 COMMENT ON COLUMN dev.check_configs.request_header IS '自定义请求头，JSONB 格式，如 {"User-Agent": "xxx"}';
 COMMENT ON COLUMN dev.check_configs.group_name IS '配置分组名称，用于 Dashboard 卡片分组展示，NULL 表示未分组';
 COMMENT ON COLUMN dev.check_configs.metadata IS '自定义请求参数，JSONB 格式，会合并到请求体中';
 COMMENT ON COLUMN dev.check_configs.created_at IS '创建时间 - 配置首次创建的时间戳';
 COMMENT ON COLUMN dev.check_configs.updated_at IS '更新时间 - 配置最后修改的时间戳,由触发器自动维护';
+
+COMMENT ON COLUMN dev.check_request_templates.id IS '模板 UUID - 自动生成的唯一标识符';
+COMMENT ON COLUMN dev.check_request_templates.name IS '模板名称 - 全局唯一';
+COMMENT ON COLUMN dev.check_request_templates.type IS '模板提供商类型 - 必须与 check_configs.type 一致';
+COMMENT ON COLUMN dev.check_request_templates.request_header IS '模板默认请求头，JSONB 格式';
+COMMENT ON COLUMN dev.check_request_templates.metadata IS '模板默认 metadata，JSONB 格式';
+COMMENT ON COLUMN dev.check_request_templates.created_at IS '创建时间';
+COMMENT ON COLUMN dev.check_request_templates.updated_at IS '更新时间 - 由触发器自动维护';
 
 COMMENT ON COLUMN dev.check_history.id IS '记录 ID - 自增的唯一标识符';
 COMMENT ON COLUMN dev.check_history.status IS '健康状态 - operational(正常), degraded(降级/响应慢), failed(失败)';
